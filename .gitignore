@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+
+# Manim cache and intermediate render artifacts
+media/
+
+# Keep committed outputs in the outputs directory.
