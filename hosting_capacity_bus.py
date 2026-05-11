@@ -74,7 +74,13 @@ def make_network_diagram(scale=1.0, show_status=False, overloaded=False):
         Line(ORIGIN + UP * 0.35, ORIGIN + UP * 0.85, color=AUX_GRAY),
     )
     load.move_to(RIGHT * 3.7 + DOWN * 1.2)
-    load_line = Line(bus.get_bottom(), load[1].get_top(), color=AUX_GRAY, stroke_width=4)
+    load_branch_y = bus.get_center()[1] - 0.35
+    load_bus_point = bus.get_center() + UP * (load_branch_y - bus.get_center()[1])
+    load_corner = load[1].get_top() + UP * (load_branch_y - load[1].get_top()[1])
+    load_line = VGroup(
+        Line(load_bus_point, load_corner, color=AUX_GRAY, stroke_width=4),
+        Line(load_corner, load[1].get_top(), color=AUX_GRAY, stroke_width=4),
+    )
     load_label = Text("Carga", font_size=24, color=DARK_TEXT).next_to(load, DOWN, buff=0.16)
 
     pv_panel = VGroup()
@@ -91,8 +97,9 @@ def make_network_diagram(scale=1.0, show_status=False, overloaded=False):
     )
     sun.next_to(panel, UP, buff=0.12)
     pv_panel.add(panel, grid_lines, sun)
-    pv_panel.move_to(RIGHT * 3.7 + UP * 1.35)
-    pv_line = Line(pv_panel.get_left(), bus.get_right(), color=PV_ORANGE, stroke_width=4)
+    pv_panel.move_to(RIGHT * 3.7 + UP * 0.95)
+    pv_bus_point = bus.get_center() + UP * (panel.get_left()[1] - bus.get_center()[1])
+    pv_line = Line(pv_bus_point, panel.get_left(), color=PV_ORANGE, stroke_width=4)
     pv_label = Text("GD Fotovoltaica", font_size=24, color=PV_ORANGE).next_to(pv_panel, UP, buff=0.35)
 
     diagram = VGroup(sub, sub_label, feeder, feeder_label, bus, bus_label, load_line, load, load_label, pv_line, pv_panel, pv_label)
@@ -112,31 +119,45 @@ def make_network_diagram(scale=1.0, show_status=False, overloaded=False):
     return diagram
 
 
-def make_generation_meter(power_tracker, width=5.8, height=0.28):
+def make_generation_meter(power_tracker, width=5.8, height=0.28, label_buff=0.42, value_buff=0.62):
     """Create a dynamic distributed generation progress meter."""
-    frame = Rectangle(width=width, height=height, color=AUX_GRAY, stroke_width=2)
+    frame = Rectangle(width=width, height=height, color=AUX_GRAY, stroke_width=2.5)
+    frame.set_z_index(3)
 
-    fill = always_redraw(
-        lambda: Rectangle(
-            width=max(0.02, width * power_tracker.get_value() / P_MAX),
-            height=height,
+    def make_fill():
+        horizontal_inset = 0.16
+        vertical_inset = 0.05
+        inner_width = max(0.02, frame.get_width() - 2 * horizontal_inset)
+        inner_height = max(0.02, frame.get_height() - 2 * vertical_inset)
+        power = max(0, power_tracker.get_value())
+        fill_width = min(inner_width, inner_width * power / P_MAX)
+        fill_opacity = 0 if fill_width <= 0 else 0.85
+        fill_width = max(0.02, fill_width)
+        fill_rect = Rectangle(
+            width=fill_width,
+            height=inner_height,
             color=PV_ORANGE,
             fill_color=PV_ORANGE,
-            fill_opacity=0.85,
+            fill_opacity=fill_opacity,
             stroke_width=0,
-        ).align_to(frame, LEFT).move_to(frame.get_center() + LEFT * (width - max(0.02, width * power_tracker.get_value() / P_MAX)) / 2)
-    )
+        ).move_to(frame.get_left() + RIGHT * (horizontal_inset + fill_width / 2))
+        fill_rect.set_z_index(0)
+        return fill_rect
 
-    label = MathTex(r"P_{GD}", font_size=34, color=PV_ORANGE).next_to(frame, LEFT, buff=0.28)
+    fill = always_redraw(make_fill)
+
+    label = MathTex(r"P_{GD}", font_size=34, color=PV_ORANGE).next_to(frame, LEFT, buff=label_buff)
     number = DecimalNumber(0, num_decimal_places=0, font_size=30, color=PV_ORANGE)
     unit = MathTex(r"\mathrm{kW}", font_size=30, color=PV_ORANGE)
-    value = VGroup(number, unit).arrange(RIGHT, buff=0.15).next_to(frame, RIGHT, buff=0.32)
+    value = VGroup(number, unit).arrange(RIGHT, buff=0.15).next_to(frame, RIGHT, buff=value_buff)
 
     def update_value(mob):
         number.set_value(power_tracker.get_value())
-        mob.arrange(RIGHT, buff=0.15).next_to(frame, RIGHT, buff=0.32)
+        mob.arrange(RIGHT, buff=0.15).next_to(frame, RIGHT, buff=value_buff)
 
     value.add_updater(update_value)
+    label.set_z_index(2)
+    value.set_z_index(2)
     return VGroup(frame, fill, label, value)
 
 
@@ -313,9 +334,15 @@ def make_current_limit_scene_elements(power_tracker):
     diagram.move_to(LEFT * 3.85 + UP * 0.4)
     feeder = diagram[2]
     feeder_highlight = Line(feeder.get_start(), feeder.get_end(), color=VIOLATION_RED, stroke_width=9)
-    feeder_highlight.set_opacity(0.55)
+    feeder_highlight.set_opacity(0.12)
+
+    def update_feeder_highlight(mob):
+        is_violation = current_loading_from_power(power_tracker.get_value()) > 1
+        mob.set_opacity(0.82 if is_violation else 0.12)
+
+    feeder_highlight.add_updater(update_feeder_highlight)
     indicator = make_current_indicator(power_tracker, center=RIGHT * 3.25 + UP * 0.45)
-    meter = make_generation_meter(power_tracker, width=3.55)
+    meter = make_generation_meter(power_tracker, width=3.35, label_buff=0.48, value_buff=0.72)
     meter.scale(0.82).move_to(DOWN * 2.35)
     condition = VGroup(
         Text("Se", font_size=22, color=VIOLATION_RED),
@@ -344,7 +371,7 @@ def make_reverse_flow_scene_elements(power_tracker):
     reverse_arrow.scale(0.9)
     reverse_arrow.shift(LEFT * 0.45)
     indicator = make_reverse_flow_indicator(power_tracker, center=RIGHT * 3.25 + UP * 1.08)
-    meter = make_generation_meter(power_tracker, width=3.0)
+    meter = make_generation_meter(power_tracker, width=2.85, label_buff=0.48, value_buff=0.72)
     meter.scale(0.82).move_to(RIGHT * 0.55 + DOWN * 2.55)
     explanation = VGroup(
         Text("Quando a GD excede a carga local,", font_size=21, color=DARK_TEXT),
@@ -390,11 +417,11 @@ def make_constraints_panel():
 def make_solution_balloons():
     """Create compact engineering solution labels."""
     labels = [
-        (("Controle", "Volt-VAR"), RIGHT * 3.10 + DOWN * 2.55),
-        (("Recondutoramento",), RIGHT * 4.95 + DOWN * 2.55),
-        (("Regulador", "de tensão"), RIGHT * 3.10 + DOWN * 3.05),
-        (("Armazenamento",), RIGHT * 4.95 + DOWN * 3.05),
-        (("Limitação", "de injeção"), RIGHT * 4.05 + DOWN * 3.55),
+        (("Controle", "Volt-VAR"), RIGHT * 2.85 + DOWN * 2.42),
+        (("Recondutoramento",), RIGHT * 5.20 + DOWN * 2.42),
+        (("Regulador", "de tensão"), RIGHT * 2.85 + DOWN * 3.10),
+        (("Armazenamento",), RIGHT * 5.20 + DOWN * 3.10),
+        (("Limitação", "de injeção"), RIGHT * 4.05 + DOWN * 3.72),
     ]
     balloons = VGroup()
     for lines, position in labels:
@@ -477,6 +504,7 @@ class HostingCapacityBus(Scene):
         gd_injection = make_power_arrow(RIGHT * 3.0 + UP * 1.75, RIGHT * 1.55 + UP * 0.72, "Injeção da GD", PV_ORANGE)
         gd_injection.scale(0.85)
         gd_injection.shift(DOWN * 0.30)
+        gd_injection[1].shift(RIGHT * 0.35)
 
         self.play(FadeIn(title), run_time=0.8)
         self.play(Create(diagram), run_time=2.4)

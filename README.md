@@ -20,7 +20,13 @@ Renderização em baixa resolução:
 manim -r 426,240 --fps 15 hosting_capacity_bus.py HostingCapacityBus
 ```
 
-## Arquivo renderizado
+## Arquivos renderizados
+
+O vídeo em alta resolução está em:
+
+```text
+outputs/HostingCapacityBus_1080p.mp4
+```
 
 O vídeo em baixa resolução gerado para revisão está em:
 
